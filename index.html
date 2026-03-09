@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>DeliverTrack – Real-time Delivery Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.7.1/firebase-app-compat.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.7.1/firebase-database-compat.min.js"></script>
+<style>
+  :root {
+    --bg: #080b12;
+    --surface: #0f1520;
+    --surface2: #161d2e;
+    --border: #1e2a3d;
+    --accent: #3b82f6;
+    --accent2: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --faint: #1a2540;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  h1,h2,h3 { font-family: 'Syne', sans-serif; }
+  ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: var(--surface); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* SETUP SCREEN */
+  #setup-screen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 24px;
+  }
+  .setup-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 40px; max-width: 560px; width: 100%;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  }
+  .setup-logo { font-family:'Syne',sans-serif; font-size:28px; font-weight:800; margin-bottom:6px; }
+  .setup-logo span { color: var(--accent); }
+  .setup-sub { color: var(--muted); font-size:14px; margin-bottom:28px; line-height:1.6; }
+  .step { background: var(--faint); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
+  .step-num { font-size:11px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+  .step p { font-size:13px; color:var(--muted); line-height:1.6; }
+  .step a { color: var(--accent); text-decoration:none; }
+  .step code { background: #0f1520; padding: 1px 6px; border-radius:4px; font-size:12px; color:#7dd3fc; }
+  .config-input {
+    width:100%; padding:12px 14px; background:#060a11; border:1px solid var(--border);
+    border-radius:10px; color:var(--text); font-size:13px; font-family:'Outfit',monospace;
+    resize:vertical; min-height:120px; margin-top:8px; outline:none;
+    transition: border-color 0.2s;
+  }
+  .config-input:focus { border-color: var(--accent); }
+  .btn { cursor:pointer; border:none; border-radius:10px; font-family:'Outfit',sans-serif; font-weight:600; transition:all 0.15s; }
+  .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn:active { transform: none; }
+  .btn-primary { background:var(--accent); color:#fff; padding:12px 24px; font-size:15px; width:100%; margin-top:16px; }
+  .btn-sm { padding:7px 14px; font-size:13px; }
+  .btn-green { background:var(--accent2); color:#fff; }
+  .btn-gray { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
+  .btn-red { background:#7f1d1d; color:#fca5a5; border:1px solid #991b1b; }
+  .err-msg { color:var(--danger); font-size:13px; margin-top:10px; display:none; }
+
+  /* NAME MODAL */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:200;
+    display:flex; align-items:center; justify-content:center; padding:16px;
+  }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:28px; max-width:380px; width:100%; animation: popIn 0.2s ease; }
+  @keyframes popIn { from { opacity:0; transform:scale(0.95) translateY(10px); } to { opacity:1; transform:none; } }
+
+  /* MAIN APP */
+  #app { display:none; }
+  .header {
+    position:sticky; top:0; z-index:100;
+    background: rgba(8,11,18,0.92); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border); padding:14px 20px;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  .logo { font-family:'Syne',sans-serif; font-size:18px; font-weight:800; display:flex; align-items:center; gap:8px; }
+  .live-dot { width:8px; height:8px; background:#10b981; border-radius:50%; animation: pulse 2s infinite; display:inline-block; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+  .sync-info { font-size:11px; color:var(--muted); }
+
+  .content { max-width:920px; margin:0 auto; padding:24px 16px; }
+
+  /* STATS */
+  .stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
+  .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px; }
+  .stat-val { font-family:'Syne',sans-serif; font-size:32px; font-weight:800; line-height:1; }
+  .stat-lbl { font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:4px; }
+
+  /* PROGRESS */
+  .progress-wrap { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:20px; }
+  .prog-header { display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:10px; }
+  .prog-bar { height:10px; background:var(--faint); border-radius:6px; overflow:hidden; }
+  .prog-fill { height:100%; background:linear-gradient(90deg, var(--accent), var(--accent2)); border-radius:6px; transition:width 0.8s cubic-bezier(.4,0,.2,1); }
+
+  /* CONTROLS */
+  .controls { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+  .filter-tabs { display:flex; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:3px; gap:2px; }
+  .tab { background:none; border:none; cursor:pointer; font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; padding:6px 14px; border-radius:7px; color:var(--muted); transition:all 0.15s; }
+  .tab.active { background:var(--accent); color:#fff; }
+  .tab:not(.active):hover { color:var(--text); background:var(--faint); }
+  .search-box { flex:1; min-width:180px; padding:9px 14px; background:var(--surface); border:1px solid var(--border); border-radius:10px; color:var(--text); font-size:14px; font-family:'Outfit',sans-serif; outline:none; transition: border-color 0.2s; }
+  .search-box:focus { border-color:var(--accent); }
+
+  /* CUSTOMER ROWS */
+  .customer-list { display:flex; flex-direction:column; gap:8px; }
+  .customer-row {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; display:flex; align-items:center; gap:12px;
+    transition:background 0.15s, border-color 0.2s; animation: slideIn 0.2s ease;
+    border-left-width: 3px;
+  }
+  @keyframes slideIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+  .customer-row:hover { background:var(--surface2); }
+  .customer-row.delivered { border-left-color: var(--accent2); }
+  .customer-row.pending { border-left-color: var(--warn); }
+  .cust-info { flex:1; min-width:0; }
+  .cust-name { font-weight:700; font-size:15px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.3px; text-transform:uppercase; }
+  .badge-delivered { background:#064e3b; color:#6ee7b7; }
+  .badge-pending { background:#451a03; color:#fcd34d; }
+  .cust-meta { color:var(--muted); font-size:13px; margin-top:4px; display:flex; flex-wrap:wrap; gap:10px; }
+  .cust-by { font-size:11px; color:#475569; margin-top:3px; }
+  .row-actions { display:flex; gap:6px; flex-shrink:0; }
+
+  /* EMPTY STATE */
+  .empty { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:56px; text-align:center; }
+  .empty h3 { color:var(--muted); font-weight:400; font-size:16px; margin-top:12px; }
+
+  /* TOAST */
+  .toast {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:#1e293b; border:1px solid #334155; color:var(--text);
+    padding:10px 22px; border-radius:10px; font-weight:600; z-index:300;
+    font-size:14px; box-shadow:0 8px 32px rgba(0,0,0,0.5);
+    animation: toastIn 0.2s ease;
+    white-space:nowrap;
+  }
+  @keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(12px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+  /* FORM inputs */
+  .form-field { margin-bottom:14px; }
+  .form-label { font-size:12px; color:var(--muted); font-weight:600; display:block; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.5px; }
+  .form-input { width:100%; padding:10px 13px; background:#060a11; border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:14px; font-family:'Outfit',sans-serif; outline:none; transition:border-color 0.2s; }
+  .form-input:focus { border-color:var(--accent); }
+
+  @media(max-width:500px) {
+    .stats-grid { grid-template-columns:repeat(3,1fr); }
+    .stat-val { font-size:24px; }
+    .row-actions { flex-direction:column; }
+    .controls { flex-direction:column; align-items:stretch; }
+    .filter-tabs { justify-content:center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <div class="setup-logo">📦 Deliver<span>Track</span></div>
+    <p class="setup-sub">Real-time delivery management for your team. Follow the steps below to connect your free Firebase database — takes about 5 minutes.</p>
+    <div id="cdn-err" style="display:none;background:#7f1d1d;border:1px solid #991b1b;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#fca5a5;">
+      ⚠️ <strong>Cannot load Firebase scripts.</strong> This usually means no internet connection, or your browser is blocking external scripts.<br><br>
+      <strong>Fix:</strong> Open this file in <strong>Chrome or Safari</strong> on your phone, make sure you have internet, then try again. Or host it on Netlify for best results.
+    </div>
+
+    <div class="step">
+      <div class="step-num">Step 1</div>
+      <p>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → <strong>Create a project</strong> (any name, disable Google Analytics if asked).</p>
+    </div>
+    <div class="step">
+      <div class="step-num">Step 2</div>
+      <p>Inside your project → click <strong>Build → Realtime Database</strong> → <strong>Create Database</strong> → choose any location → select <strong>Start in test mode</strong> → Enable.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">Step 3</div>
+      <p>Go to <strong>Project Settings</strong> (⚙ gear icon) → scroll to <strong>Your apps</strong> → click <strong>&lt;/&gt; Web</strong> → register your app → copy the <code>firebaseConfig</code> object and paste it below.</p>
+    </div>
+
+    <div class="form-field" style="margin-top:20px;">
+      <label class="form-label">Paste your firebaseConfig object here</label>
+      <textarea class="config-input" id="config-input" placeholder='{
+  apiKey: "AIza...",
+  authDomain: "your-app.firebaseapp.com",
+  databaseURL: "https://your-app-default-rtdb.firebaseio.com",
+  projectId: "your-app",
+  storageBucket: "your-app.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123..."
+}'></textarea>
+    </div>
+    <p class="err-msg" id="setup-err"></p>
+    <button class="btn btn-primary" onclick="connectFirebase()">🔗 Connect & Launch App</button>
+  </div>
+</div>
+
+<!-- NAME MODAL -->
+<div class="modal-overlay" id="name-modal" style="display:none;">
+  <div class="modal">
+    <div style="font-size:32px;margin-bottom:10px;">👋</div>
+    <h2 style="margin-bottom:6px;font-size:19px;">Who are you?</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:18px;">Enter your name so deliveries are tracked under your account.</p>
+    <input class="form-input" id="name-input" placeholder="Your name..." onkeydown="if(event.key==='Enter')saveName()" autofocus/>
+    <button class="btn btn-primary" onclick="saveName()" style="margin-top:12px;">Continue →</button>
+  </div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="modal-overlay" id="import-modal" style="display:none;">
+  <div class="modal" style="max-width:560px;">
+    <h2 style="margin-bottom:6px;font-size:18px;">📊 Import from Google Sheets</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:12px;line-height:1.7;">
+      In Google Sheets, select all data (Ctrl+A) → Copy (Ctrl+C) → paste below.<br>
+      <strong style="color:#94a3b8;">Required column: Name</strong> &nbsp;·&nbsp; Optional: Phone, Address, Note
+    </p>
+
+    <!-- Download Template Banner -->
+    <div style="background:#0f2a1a;border:1px solid #166534;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#4ade80;">📥 Don't have a sheet yet?</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px;">Download our ready-made template, fill it in, then paste here.</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm" onclick="downloadTemplate('csv')" style="background:#14532d;color:#4ade80;border:1px solid #166534;white-space:nowrap;">⬇ CSV</button>
+        <button class="btn btn-sm" onclick="downloadTemplate('xlsx')" style="background:#14532d;color:#4ade80;border:1px solid #166534;white-space:nowrap;">⬇ Excel</button>
+      </div>
+    </div>
+
+    <textarea class="config-input" id="import-text" placeholder="Paste Google Sheets data here..." style="min-height:160px;font-size:12px;"></textarea>
+    <p id="import-err" style="color:var(--danger);font-size:13px;margin-top:8px;display:none;"></p>
+    <p id="import-ok" style="color:var(--accent2);font-size:13px;margin-top:8px;display:none;"></p>
+    <div style="display:flex;gap:10px;margin-top:14px;">
+      <button class="btn btn-gray btn-sm" style="flex:1;padding:10px;" onclick="closeImport()">Cancel</button>
+      <button class="btn btn-green btn-sm" style="flex:2;padding:10px;" onclick="doImport()">Import Customers</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD CUSTOMER MODAL -->
+<div class="modal-overlay" id="add-modal" style="display:none;">
+  <div class="modal" style="max-width:440px;">
+    <h2 style="margin-bottom:18px;font-size:18px;">👤 Add Customer</h2>
+    <div class="form-field"><label class="form-label">Name *</label><input class="form-input" id="f-name" placeholder="Customer name"/></div>
+    <div class="form-field"><label class="form-label">Phone</label><input class="form-input" id="f-phone" placeholder="+1 234 567 8900"/></div>
+    <div class="form-field"><label class="form-label">Address</label><input class="form-input" id="f-address" placeholder="Delivery address"/></div>
+    <div class="form-field"><label class="form-label">Note</label><input class="form-input" id="f-note" placeholder="Any extra info..."/></div>
+    <div style="display:flex;gap:10px;margin-top:6px;">
+      <button class="btn btn-gray btn-sm" style="flex:1;padding:10px;" onclick="document.getElementById('add-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary btn-sm" style="flex:2;padding:10px;margin-top:0;" onclick="addCustomer()">Add Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE MODAL -->
+<div class="modal-overlay" id="del-modal" style="display:none;">
+  <div class="modal" style="max-width:340px;text-align:center;">
+    <div style="font-size:32px;margin-bottom:10px;">🗑️</div>
+    <h3 style="margin-bottom:8px;">Remove Customer?</h3>
+    <p id="del-name" style="color:var(--muted);font-size:14px;margin-bottom:20px;"></p>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-gray btn-sm" style="flex:1;padding:10px;" onclick="document.getElementById('del-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-red btn-sm" style="flex:1;padding:10px;" onclick="confirmDelete()">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="header">
+    <div>
+      <div class="logo">📦 DeliverTrack &nbsp;<span class="live-dot"></span></div>
+      <div class="sync-info" id="sync-info">Connecting...</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button class="btn btn-gray btn-sm" onclick="showNameModal()">👤 <span id="emp-display">Set Name</span></button>
+      <button class="btn btn-gray btn-sm" onclick="document.getElementById('add-modal').style.display='flex'">+ Add</button>
+      <button class="btn btn-green btn-sm" onclick="document.getElementById('import-modal').style.display='flex'">⬆ Import</button>
+      <button class="btn btn-gray btn-sm" onclick="showTemplateModal()" style="background:#0f2a1a;color:#4ade80;border:1px solid #166534;">📋 Template</button>
+      <button class="btn btn-gray btn-sm" onclick="disconnectAndReset()" title="Change Firebase config" style="font-size:11px;">⚙ Reconnect</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-val" id="stat-total" style="color:#818cf8;">0</div><div class="stat-lbl">📋 Total</div></div>
+      <div class="stat-card"><div class="stat-val" id="stat-delivered" style="color:#34d399;">0</div><div class="stat-lbl">✅ Delivered</div></div>
+      <div class="stat-card"><div class="stat-val" id="stat-pending" style="color:#fbbf24;">0</div><div class="stat-lbl">⏳ Pending</div></div>
+    </div>
+    <!-- Progress -->
+    <div class="progress-wrap">
+      <div class="prog-header"><span style="font-weight:700;">Delivery Progress</span><span id="prog-pct" style="color:var(--accent2);font-weight:800;">0%</span></div>
+      <div class="prog-bar"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+    </div>
+    <!-- Controls -->
+    <div class="controls">
+      <div class="filter-tabs">
+        <button class="tab active" onclick="setFilter('all',this)">All</button>
+        <button class="tab" onclick="setFilter('pending',this)">Pending</button>
+        <button class="tab" onclick="setFilter('delivered',this)">Delivered</button>
+      </div>
+      <input class="search-box" id="search-box" placeholder="🔍 Search name, phone, address..." oninput="renderList()"/>
+      <button class="btn btn-red btn-sm" onclick="clearAll()" id="clear-btn" style="display:none;">Clear All</button>
+    </div>
+    <!-- List -->
+    <div class="customer-list" id="customer-list"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast" style="display:none;"></div>
+
+<!-- TEMPLATE MODAL -->
+<div class="modal-overlay" id="template-modal" style="display:none;">
+  <div class="modal fade-in" style="max-width:420px;">
+    <h2 style="margin-bottom:6px;font-size:18px;">📋 Download Template</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.7;">
+      Download a ready-made template, fill in your customers, then import it back into the app.
+    </p>
+
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">
+      <div style="background:var(--faint);border-radius:12px;padding:16px;border:1px solid var(--border);">
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">📊 Google Sheets / Excel</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">Best for editing on phone or computer. Open in Google Sheets or Microsoft Excel.</div>
+        <button class="btn btn-green btn-sm" onclick="downloadTemplate('xlsx')" style="width:100%;padding:10px;font-size:14px;">⬇ Download Excel Template (.xls)</button>
+      </div>
+
+      <div style="background:var(--faint);border-radius:12px;padding:16px;border:1px solid var(--border);">
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">📄 CSV File</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">Simple format. Opens in any spreadsheet app or text editor.</div>
+        <button class="btn btn-sm" onclick="downloadTemplate('csv')" style="width:100%;padding:10px;font-size:14px;background:#1e3a5f;color:#7dd3fc;border:1px solid #1d4ed8;">⬇ Download CSV Template</button>
+      </div>
+    </div>
+
+    <div style="background:#0f2a1a;border:1px solid #166534;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:#4ade80;margin-bottom:6px;">📌 How to use:</div>
+      <div style="font-size:12px;color:#6b7280;line-height:1.8;">
+        1. Download the template<br>
+        2. Open in Google Sheets or Excel<br>
+        3. Fill in your customer data<br>
+        4. In Google Sheets: Select All → Copy<br>
+        5. Come back → tap ⬆ Import → Paste → Done!
+      </div>
+    </div>
+
+    <button class="btn btn-gray btn-sm" onclick="document.getElementById('template-modal').style.display='none'" style="width:100%;padding:10px;">Close</button>
+  </div>
+</div>
+
+<script>
+let db, customersRef;
+let customers = {};
+let currentFilter = 'all';
+let deleteTargetId = null;
+let employeeName = localStorage.getItem('dt-emp-name') || '';
+
+function connectFirebase() {
+  if (typeof firebase === 'undefined') {
+    document.getElementById('setup-err').textContent = '⚠ Firebase not loaded. Make sure you have internet connection, then refresh the page and try again.';
+    document.getElementById('setup-err').style.display = 'block';
+    return;
+  }
+  const raw = document.getElementById('config-input').value.trim();
+  const err = document.getElementById('setup-err');
+  err.style.display = 'none';
+
+  let config;
+  try {
+    // Try to parse – handle both JS object and JSON
+    const cleaned = raw
+      .replace(/^const\s+\w+\s*=\s*/, '')
+      .replace(/;$/, '')
+      .replace(/(\w+)\s*:/g, '"$1":')
+      .replace(/'/g, '"');
+    config = JSON.parse(cleaned);
+  } catch(e) {
+    try {
+      // eslint-disable-next-line no-eval
+      config = eval('(' + raw + ')');
+    } catch(e2) {
+      err.textContent = '⚠ Could not parse config. Make sure you pasted the full firebaseConfig object.';
+      err.style.display = 'block';
+      return;
+    }
+  }
+
+  if (!config.databaseURL) {
+    err.textContent = '⚠ Missing databaseURL. In Firebase console, make sure Realtime Database is created and the URL is in your config.';
+    err.style.display = 'block';
+    return;
+  }
+
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(config);
+    }
+    db = firebase.database();
+    customersRef = db.ref('customers');
+    localStorage.setItem('dt-config', JSON.stringify(config));
+    launchApp();
+  } catch(e) {
+    err.textContent = '⚠ Firebase error: ' + e.message;
+    err.style.display = 'block';
+  }
+}
+
+function launchApp() {
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  if (!employeeName) {
+    document.getElementById('name-modal').style.display = 'flex';
+  } else {
+    document.getElementById('emp-display').textContent = employeeName;
+  }
+
+  // Monitor actual connection state
+  const connRef = db.ref('.info/connected');
+  connRef.on('value', snap => {
+    const syncEl = document.getElementById('sync-info');
+    const dotEl = document.querySelector('.live-dot');
+    if (snap.val() === true) {
+      syncEl.textContent = 'Live sync · Connected ✓';
+      if (dotEl) dotEl.style.background = '#10b981';
+    } else {
+      syncEl.textContent = '⚠ Disconnected — retrying...';
+      if (dotEl) dotEl.style.background = '#ef4444';
+    }
+  });
+
+  // Real-time listener
+  customersRef.on('value', snap => {
+    customers = snap.val() || {};
+    renderList();
+    updateStats();
+    const syncEl = document.getElementById('sync-info');
+    if (syncEl.textContent.includes('Connected')) {
+      syncEl.textContent = 'Live sync · Last updated ' + new Date().toLocaleTimeString();
+    }
+  }, err => {
+    document.getElementById('sync-info').textContent = '⚠ Error: ' + err.message;
+  });
+}
+
+function saveName() {
+  const val = document.getElementById('name-input').value.trim();
+  if (!val) return;
+  employeeName = val;
+  localStorage.setItem('dt-emp-name', val);
+  document.getElementById('emp-display').textContent = val;
+  document.getElementById('name-modal').style.display = 'none';
+}
+
+function showNameModal() {
+  document.getElementById('name-input').value = employeeName;
+  document.getElementById('name-modal').style.display = 'flex';
+}
+
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderList();
+}
+
+function renderList() {
+  const search = document.getElementById('search-box').value.toLowerCase();
+  const list = document.getElementById('customer-list');
+  const arr = Object.entries(customers).map(function(e) { return Object.assign({id: e[0]}, e[1]); });
+
+  const filtered = arr.filter(c => {
+    const matchFilter = currentFilter === 'all' ||
+      (currentFilter === 'delivered' ? c.delivered : !c.delivered);
+    const matchSearch = !search ||
+      (c.name||'').toLowerCase().includes(search) ||
+      (c.address||'').toLowerCase().includes(search) ||
+      (c.phone||'').includes(search);
+    return matchFilter && matchSearch;
+  });
+
+  document.getElementById('clear-btn').style.display = arr.length > 0 ? 'block' : 'none';
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty">
+      <div style="font-size:48px;">📭</div>
+      <h3>${arr.length === 0 ? 'No customers yet. Import from Google Sheets or add manually.' : 'No results found.'}</h3>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(c => `
+    <div class="customer-row ${c.delivered ? 'delivered' : 'pending'}">
+      <div class="cust-info">
+        <div class="cust-name">
+          ${escHtml(c.name)}
+          <span class="badge ${c.delivered ? 'badge-delivered' : 'badge-pending'}">
+            ${c.delivered ? '✓ Delivered' : 'Pending'}
+          </span>
+        </div>
+        <div class="cust-meta">
+          ${c.phone ? `<span>📞 ${escHtml(c.phone)}</span>` : ''}
+          ${c.address ? `<span>📍 ${escHtml(c.address)}</span>` : ''}
+          ${c.note ? `<span>📝 ${escHtml(c.note)}</span>` : ''}
+        </div>
+        ${c.delivered && c.deliveredBy ? `<div class="cust-by">by ${escHtml(c.deliveredBy)} · ${c.deliveredAt ? new Date(c.deliveredAt).toLocaleString() : ''}</div>` : ''}
+      </div>
+      <div class="row-actions">
+        <button class="btn btn-sm ${c.delivered ? 'btn-gray' : 'btn-green'}" onclick="toggleDelivered('${c.id}', ${c.delivered})">
+          ${c.delivered ? '↩ Undo' : '✓ Deliver'}
+        </button>
+        <button class="btn btn-sm btn-red" onclick="askDelete('${c.id}', '${escHtml(c.name)}')">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateStats() {
+  const arr = Object.values(customers);
+  const total = arr.length;
+  const delivered = arr.filter(c => c.delivered).length;
+  const pending = total - delivered;
+  const pct = total > 0 ? Math.round(delivered/total*100) : 0;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-delivered').textContent = delivered;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('prog-pct').textContent = pct + '%';
+  document.getElementById('prog-fill').style.width = pct + '%';
+}
+
+function toggleDelivered(id, current) {
+  const delivered = !current;
+  customersRef.child(id).update({
+    delivered: delivered,
+    deliveredAt: delivered ? new Date().toISOString() : null,
+    deliveredBy: delivered ? (employeeName || 'Unknown') : ''
+  });
+  showToast(delivered ? '✅ Marked as delivered' : '↩️ Marked as pending');
+}
+
+function askDelete(id, name) {
+  deleteTargetId = id;
+  document.getElementById('del-name').textContent = name + ' will be permanently removed.';
+  document.getElementById('del-modal').style.display = 'flex';
+}
+
+function confirmDelete() {
+  if (!deleteTargetId) return;
+  customersRef.child(deleteTargetId).remove();
+  deleteTargetId = null;
+  document.getElementById('del-modal').style.display = 'none';
+  showToast('🗑️ Customer removed');
+}
+
+function addCustomer() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) return;
+  const newRef = customersRef.push();
+  newRef.set({
+    name,
+    phone: document.getElementById('f-phone').value.trim(),
+    address: document.getElementById('f-address').value.trim(),
+    note: document.getElementById('f-note').value.trim(),
+    delivered: false,
+    deliveredAt: null,
+    deliveredBy: ''
+  });
+  ['f-name','f-phone','f-address','f-note'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('add-modal').style.display = 'none';
+  showToast('👤 Customer added');
+}
+
+function parseSheet(text) {
+  const lines = text.trim().split('\n').filter(Boolean);
+  if (lines.length < 2) return { customers: [], error: 'Need at least a header row and one data row.' };
+  // Support both tab (Google Sheets paste) and comma (CSV) separators
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  const splitLine = function(line) {
+    if (sep === '\t') return line.split('\t');
+    // Simple CSV split compatible with all browsers
+    var result = [], current = '', inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      if (line[i] === '"') { inQuotes = !inQuotes; }
+      else if (line[i] === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+      else { current += line[i]; }
+    }
+    result.push(current.trim());
+    return result;
+  };
+  const header = splitLine(lines[0]).map(h => h.trim().toLowerCase());
+  const nameIdx = header.findIndex(h => h.includes('name'));
+  const phoneIdx = header.findIndex(h => h.includes('phone') || h.includes('mobile') || h.includes('contact'));
+  const addressIdx = header.findIndex(h => h.includes('address') || h.includes('location'));
+  const noteIdx = header.findIndex(h => h.includes('note') || h.includes('remark') || h.includes('comment'));
+  const statusIdx = header.findIndex(h => h.includes('status') || h.includes('delivered') || h.includes('delivery'));
+  if (nameIdx === -1) return { customers: [], error: "No 'Name' column found. Make sure your sheet has a Name column." };
+  const result = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitLine(lines[i]);
+    const name = (cols[nameIdx] || '');
+    if (!name) continue;
+    const statusVal = statusIdx !== -1 ? ((cols[statusIdx] || '').toLowerCase() || '') : '';
+    const delivered = statusVal === 'delivered' || statusVal === 'yes' || statusVal === '1' || statusVal === 'true';
+    result.push({
+      name,
+      phone: phoneIdx !== -1 ? ((cols[phoneIdx] || '') || '') : '',
+      address: addressIdx !== -1 ? ((cols[addressIdx] || '') || '') : '',
+      note: noteIdx !== -1 ? ((cols[noteIdx] || '') || '') : '',
+      delivered,
+      deliveredAt: delivered ? new Date().toISOString() : null,
+      deliveredBy: delivered ? (employeeName || 'Imported') : ''
+    });
+  }
+  return { customers: result, error: null };
+}
+
+function doImport() {
+  const text = document.getElementById('import-text').value;
+  const errEl = document.getElementById('import-err');
+  const okEl = document.getElementById('import-ok');
+  errEl.style.display = 'none'; okEl.style.display = 'none';
+  const { customers: parsed, error } = parseSheet(text);
+  if (error) { errEl.textContent = '⚠ ' + error; errEl.style.display = 'block'; return; }
+  if (!parsed.length) { errEl.textContent = '⚠ No valid rows found.'; errEl.style.display = 'block'; return; }
+
+  // Build name+phone lookup of existing customers to detect duplicates
+  const existing = Object.entries(customers);
+  let added = 0, updated = 0;
+
+  parsed.forEach(c => {
+    // Match duplicate by name (case-insensitive) OR phone number (if both have phone)
+    const dupEntry = existing.find(([id, ex]) => {
+      const sameName = ex.name.trim().toLowerCase() === c.name.trim().toLowerCase();
+      const samePhone = c.phone && ex.phone && ex.phone.replace(/\D/g,'') === c.phone.replace(/\D/g,'');
+      return sameName || samePhone;
+    });
+
+    if (dupEntry) {
+      // Update existing record, preserve delivery status if already delivered
+      const [existingId, existingData] = dupEntry;
+      customersRef.child(existingId).update({
+        name: c.name,
+        phone: c.phone,
+        address: c.address,
+        note: c.note,
+        // Only update delivery status if import explicitly sets delivered=true, otherwise keep existing
+        ...(c.delivered && !existingData.delivered ? {
+          delivered: true,
+          deliveredAt: c.deliveredAt,
+          deliveredBy: c.deliveredBy
+        } : {})
+      });
+      updated++;
+    } else {
+      customersRef.push(c);
+      added++;
+    }
+  });
+
+  const parts = [];
+  if (added > 0) parts.push(`${added} added`);
+  if (updated > 0) parts.push(`${updated} updated`);
+  okEl.textContent = `✅ Import complete: ${parts.join(', ')}!`;
+  okEl.style.display = 'block';
+  document.getElementById('import-text').value = '';
+  setTimeout(() => { closeImport(); }, 2000);
+}
+
+function closeImport() {
+  document.getElementById('import-modal').style.display = 'none';
+  document.getElementById('import-err').style.display = 'none';
+  document.getElementById('import-ok').style.display = 'none';
+}
+
+function clearAll() {
+  if (!confirm('Clear ALL customer data? This cannot be undone.')) return;
+  customersRef.remove();
+  showToast('🗑️ All data cleared');
+}
+
+function disconnectAndReset() {
+  localStorage.removeItem('dt-config');
+  location.reload();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+function downloadTemplate(type) {
+  const headers = ['Name', 'Phone', 'Address', 'Note', 'Status'];
+  const sampleRows = [
+    ['John Smith', '+1 555 123 4567', '123 Main St, Springfield', 'Leave at door', 'Pending'],
+    ['Sarah Johnson', '+1 555 987 6543', '456 Oak Ave, Shelbyville', 'Call on arrival', 'Delivered'],
+    ['Mike Williams', '+1 555 456 7890', '789 Pine Rd, Capital City', '', 'Pending'],
+  ];
+
+  if (type === 'csv') {
+    const rows = [headers, ...sampleRows];
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'delivertrack-template.csv';
+    a.click(); URL.revokeObjectURL(url);
+    showToast('📥 CSV template downloaded!');
+  } else {
+    // Build Excel-compatible XML (opens in Excel & Google Sheets)
+    const xmlRows = [headers, ...sampleRows].map(row =>
+      '<Row>' + row.map(v => `<Cell><Data ss:Type="String">${v.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</Data></Cell>`).join('') + '</Row>'
+    ).join('');
+    const xml = `<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="header"><Font ss:Bold="1"/><Interior ss:Color="#1E3A5F" ss:Pattern="Solid"/><Font ss:Color="#FFFFFF" ss:Bold="1"/></Style>
+ </Styles>
+ <Worksheet ss:Name="Customers">
+  <Table>
+   <Column ss:Width="140"/><Column ss:Width="130"/><Column ss:Width="200"/><Column ss:Width="160"/>
+   <Row ss:StyleID="header">${headers.map(h=>`<Cell><Data ss:Type="String">${h}</Data></Cell>`).join('')}</Row>
+   ${sampleRows.map(row=>'<Row>'+row.map(v=>`<Cell><Data ss:Type="String">${v.replace(/&/g,'&amp;')}</Data></Cell>`).join('')+'</Row>').join('')}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'delivertrack-template.xls';
+    a.click(); URL.revokeObjectURL(url);
+    showToast('📥 Excel template downloaded!');
+  }
+}
+
+function showTemplateModal() {
+  document.getElementById('template-modal').style.display = 'flex';
+}
+
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Auto-connect with pre-configured Firebase
+window.addEventListener('load', () => {
+  const presetConfig = {
+    apiKey: "AIzaSyARnxws-gB1cinysKAfj0dAVfycfXvV2dE",
+    authDomain: "atlas-50920.firebaseapp.com",
+    databaseURL: "https://atlas-50920-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "atlas-50920",
+    storageBucket: "atlas-50920.firebasestorage.app",
+    messagingSenderId: "1067056783453",
+    appId: "1:1067056783453:web:37d6c0d57644ceaf042db4"
+  };
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(presetConfig);
+    db = firebase.database();
+    customersRef = db.ref('customers');
+    localStorage.setItem('dt-config', JSON.stringify(presetConfig));
+    launchApp();
+  } catch(e) {
+    // Fall back to manual setup if auto-connect fails
+    const saved = localStorage.getItem('dt-config');
+    if (saved) {
+      try {
+        const config = JSON.parse(saved);
+        if (!firebase.apps.length) firebase.initializeApp(config);
+        db = firebase.database();
+        customersRef = db.ref('customers');
+        launchApp();
+      } catch(e2) {
+        localStorage.removeItem('dt-config');
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
